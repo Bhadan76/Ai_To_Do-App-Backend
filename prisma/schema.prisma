@@ -46,6 +46,7 @@ model User {
   tasks        Task[]
   conversations AiConversation[]
   notifications Notification[]
+  refreshTokens RefreshToken[]
 }
 
 model Category {
@@ -124,4 +125,23 @@ model Notification {
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isRead])
+}
+
+model RefreshToken {
+  id          String        @id @default(uuid())
+  tokenHash   String        @unique
+  familyId    String        @default(uuid())
+  createdAt   DateTime      @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  rotatedToId String?       @unique
+
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  rotatedTo   RefreshToken? @relation("RefreshTokenRotation", fields: [rotatedToId], references: [id], onDelete: SetNull)
+  rotatedFrom RefreshToken? @relation("RefreshTokenRotation")
+
+  @@index([userId, expiresAt])
+  @@index([familyId, revokedAt])
 }
