@@ -35,7 +35,7 @@ export class GeminiService {
   constructor(
     @Inject('GoogleGenAI_TOKEN') private readonly googleGenAI: GoogleGenAI,
   ) {
-    this.modelName = 'gemini-1.5-flash';
+    this.modelName = 'gemini-2.5-flash';
     this.timeoutMs = 30000;
     this.client = googleGenAI;
   }
