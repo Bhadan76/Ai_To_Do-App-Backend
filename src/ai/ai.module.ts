@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { GoogleGenAI } from '@google/genai';
 import { GeminiService } from './gemini.service';
 import { AiService } from './ai.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,6 +12,8 @@ import { SendMessageDto } from './dto/send-message.dto';
 import { ConversationListResponseDto } from './dto/conversation-response.dto';
 import { ConversationResponseDto } from './dto/conversation-response.dto';
 import { MessageResponseDto } from './dto/conversation-response.dto';
+
+const DEFAULT_GEMINI_TIMEOUT_MS = 30000;
 
 @Module({
   imports: [
@@ -27,22 +30,41 @@ import { MessageResponseDto } from './dto/conversation-response.dto';
     {
       provide: 'GEMINI_API_KEY',
       useFactory: (configService: ConfigService) =>
-        configService.getOrThrow('GEMINI_API_KEY'),
+        configService.get<string>('GEMINI_API_KEY') ?? '',
       inject: [ConfigService],
     },
     {
       provide: 'GEMINI_MODEL',
       useFactory: (configService: ConfigService) =>
-        configService.getOrThrow('GEMINI_MODEL'),
+        configService.get<string>('GEMINI_MODEL') ?? '',
       inject: [ConfigService],
     },
     {
       provide: 'GEMINI_TIMEOUT_MS',
       useFactory: (configService: ConfigService) => {
-        const timeout = configService.get('GEMINI_TIMEOUT_MS');
-        return timeout ? parseInt(timeout, 10) : 30000;
+        const timeout = configService.get<string | number>('GEMINI_TIMEOUT_MS');
+        const parsed = typeof timeout === 'number' ? timeout : Number(timeout);
+        return Number.isSafeInteger(parsed) && parsed > 0
+          ? parsed
+          : DEFAULT_GEMINI_TIMEOUT_MS;
       },
       inject: [ConfigService],
+    },
+    {
+      // A real Gemini client is only built when the feature is fully
+      // configured. Otherwise the gateway stays disabled and the AI
+      // endpoints answer with 503 Service Unavailable.
+      provide: 'GoogleGenAI_TOKEN',
+      useFactory: (
+        apiKey: string,
+        model: string,
+      ): GoogleGenAI | null => {
+        if (!apiKey || !model) {
+          return null;
+        }
+        return new GoogleGenAI({ apiKey });
+      },
+      inject: ['GEMINI_API_KEY', 'GEMINI_MODEL'],
     },
   ],
   controllers: [AiController],

@@ -17,6 +17,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -39,6 +40,10 @@ import { GEMINI_CHAT_GATEWAY } from './gemini-gateway.token';
 
 @ApiTags('AI')
 @ApiBearerAuth()
+@ApiServiceUnavailableResponse({
+  description:
+    'The AI feature is unavailable because Gemini is not configured.',
+})
 @UseGuards(JwtAuthGuard)
 @Controller('ai')
 export class AiController {

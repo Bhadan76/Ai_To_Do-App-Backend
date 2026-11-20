@@ -1,4 +1,5 @@
 export const mockGeminiService = {
+  isConfigured: () => true,
   generateContent: async () => {
     return {
       text: 'Hello! How can I help you?',

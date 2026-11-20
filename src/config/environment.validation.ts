@@ -1,4 +1,8 @@
+import { Logger } from '@nestjs/common';
+
 type Environment = Record<string, unknown>;
+
+const logger = new Logger('Environment');
 
 const allowedNodeEnvironments = new Set([
   'development',
@@ -12,6 +16,18 @@ function positiveInteger(value: unknown, name: string, fallback: number) {
     throw new Error(`Invalid ${name} configuration.`);
   }
   return parsed;
+}
+
+/**
+ * Reads an optional string setting without ever failing validation.
+ * Missing or blank values are normalized to an empty string so that
+ * optional features can stay disabled instead of blocking startup.
+ */
+function optionalString(value: unknown): string {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  return String(value).trim();
 }
 
 function validateCorsOrigins(value: unknown, nodeEnv: string) {
@@ -97,35 +113,22 @@ export function validateEnvironment(config: Environment): Environment {
   if (port > 65535) {
     throw new Error('Invalid PORT configuration.');
   }
-  console.log('Gemini Environment Check:', {
-  configHasKey: Boolean(
-    String(config.GEMINI_API_KEY ?? '').trim(),
-  ),
-  processHasKey: Boolean(
-    process.env.GEMINI_API_KEY?.trim(),
-  ),
-});
-
-  const geminiApiKey =
-    config.GEMINI_API_KEY === undefined
-      ? undefined
-      : String(config.GEMINI_API_KEY);
-  if (geminiApiKey === undefined || geminiApiKey.trim().length === 0) {
-    throw new Error('GEMINI_API_KEY must be configured.');
-  }
-
-  const geminiModel =
-    config.GEMINI_MODEL === undefined
-      ? undefined
-      : String(config.GEMINI_MODEL);
-  if (geminiModel === undefined || geminiModel.trim().length === 0) {
-    throw new Error('GEMINI_MODEL must be configured.');
-  }
-
+  // Gemini AI is an optional feature: a missing key or model must never
+  // prevent the application from starting. When it is not configured the
+  // AI endpoints answer with 503 Service Unavailable instead.
+  const geminiApiKey = optionalString(config.GEMINI_API_KEY);
+  const geminiModel = optionalString(config.GEMINI_MODEL);
   const geminiTimeoutMs =
     config.GEMINI_TIMEOUT_MS === undefined
       ? undefined
       : positiveInteger(config.GEMINI_TIMEOUT_MS, 'GEMINI_TIMEOUT_MS', 30000);
+
+  if (geminiApiKey === '' || geminiModel === '') {
+    logger.warn(
+      'Gemini AI is not configured. AI endpoints will respond with 503 until ' +
+        'both GEMINI_API_KEY and GEMINI_MODEL are provided.',
+    );
+  }
 
   return {
     ...config,

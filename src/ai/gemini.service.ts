@@ -1,9 +1,19 @@
-import { Injectable, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { GoogleGenAI } from '@google/genai';
+import {
+  GeminiChatGateway,
+  GEMINI_UNAVAILABLE_MESSAGE,
+} from './gemini-gateway.token';
 
 const DEFAULT_TEMPERATURE = 0.7;
 const DEFAULT_TOP_P = 1;
 const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+const DEFAULT_TIMEOUT_MS = 30000;
 
 type GenerateContentResponse = {
   text?: string;
@@ -27,17 +37,34 @@ type GenerateContentResponse = {
 };
 
 @Injectable()
-export class GeminiService {
-  private readonly client: GoogleGenAI;
+export class GeminiService implements GeminiChatGateway {
+  private readonly client: GoogleGenAI | null;
   private readonly modelName: string;
   private readonly timeoutMs: number;
 
   constructor(
-    @Inject('GoogleGenAI_TOKEN') private readonly googleGenAI: GoogleGenAI,
+    @Optional()
+    @Inject('GoogleGenAI_TOKEN')
+    googleGenAI: GoogleGenAI | null,
+    @Optional()
+    @Inject('GEMINI_MODEL')
+    modelName?: string,
+    @Optional()
+    @Inject('GEMINI_TIMEOUT_MS')
+    timeoutMs?: number,
   ) {
-    this.modelName = 'gemini-2.5-flash';
-    this.timeoutMs = 30000;
-    this.client = googleGenAI;
+    // The client is only created when the API key is available, so a missing
+    // key never turns into a real Gemini client (and never reaches the API).
+    this.client = googleGenAI ?? null;
+    this.modelName = modelName?.trim() ?? '';
+    this.timeoutMs =
+      typeof timeoutMs === 'number' && timeoutMs > 0
+        ? timeoutMs
+        : DEFAULT_TIMEOUT_MS;
+  }
+
+  isConfigured(): boolean {
+    return this.client !== null && this.modelName.length > 0;
   }
 
   async generateContent(
@@ -56,6 +83,10 @@ export class GeminiService {
       probability: string;
     }>;
   }> {
+    if (!this.isConfigured()) {
+      throw new ServiceUnavailableException(GEMINI_UNAVAILABLE_MESSAGE);
+    }
+
     try {
       const config: {
         temperature?: number;
@@ -78,7 +109,7 @@ export class GeminiService {
         };
       }
 
-      const response = await this.client.models.generateContent({
+      const response = await this.client!.models.generateContent({
         model: this.modelName,
         contents,
         config,
@@ -148,8 +179,12 @@ export class GeminiService {
   }
 
   async countTokens(contents: string[]): Promise<number> {
+    if (!this.isConfigured()) {
+      throw new ServiceUnavailableException(GEMINI_UNAVAILABLE_MESSAGE);
+    }
+
     try {
-      const result = await this.client.models.countTokens({
+      const result = await this.client!.models.countTokens({
         model: this.modelName,
         contents,
       });

@@ -1,12 +1,16 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { GeminiService } from './gemini.service';
 import type { GeminiChatGateway } from './gemini-gateway.token';
-import { GEMINI_CHAT_GATEWAY } from './gemini-gateway.token';
+import {
+  GEMINI_CHAT_GATEWAY,
+  GEMINI_UNAVAILABLE_MESSAGE,
+} from './gemini-gateway.token';
 
 const MAX_USER_MESSAGE_LENGTH = 4000;
 const MAX_CONTEXT_MESSAGES = 20;
@@ -15,8 +19,26 @@ const MAX_CONTEXT_MESSAGES = 20;
 export class AiService {
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(GEMINI_CHAT_GATEWAY)
     private readonly gemini: GeminiChatGateway,
   ) {}
+
+  /**
+   * Reports whether the Gemini-backed AI feature is available.
+   */
+  isGeminiAvailable(): boolean {
+    return this.gemini.isConfigured();
+  }
+
+  /**
+   * The whole AI feature depends on Gemini. While it is not configured the
+   * endpoints answer with a generic 503 instead of failing deeper down.
+   */
+  private assertGeminiAvailable(): void {
+    if (!this.isGeminiAvailable()) {
+      throw new ServiceUnavailableException(GEMINI_UNAVAILABLE_MESSAGE);
+    }
+  }
 
   async createConversation(
     userId: string,
@@ -28,6 +50,8 @@ export class AiService {
     createdAt: Date;
     updatedAt: Date;
   }> {
+    this.assertGeminiAvailable();
+
     return this.prisma.aiConversation.create({
       data: {
         userId,
@@ -76,6 +100,8 @@ export class AiService {
         `Message exceeds maximum length of ${MAX_USER_MESSAGE_LENGTH} characters.`,
       );
     }
+
+    this.assertGeminiAvailable();
 
     // Persist the user message first
     const userMessage = await this.prisma.aiMessage.create({
@@ -227,6 +253,8 @@ export class AiService {
     totalItems: number;
     totalPages: number;
   }> {
+    this.assertGeminiAvailable();
+
     const skip = (page - 1) * pageSize;
 
     const [items, totalItems] = await Promise.all([
@@ -265,6 +293,8 @@ export class AiService {
     createdAt: Date;
     updatedAt: Date;
   }> {
+    this.assertGeminiAvailable();
+
     const conversation = await this.prisma.aiConversation.findFirst({
       where: { id: conversationId, userId },
       select: {
@@ -289,6 +319,8 @@ export class AiService {
     userId: string,
     conversationId: string,
   ): Promise<void> {
+    this.assertGeminiAvailable();
+
     const result = await this.prisma.aiConversation.deleteMany({
       where: { id: conversationId, userId },
     });

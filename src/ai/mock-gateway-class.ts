@@ -4,6 +4,8 @@ import { GeminiChatGateway } from './gemini-gateway.token';
 
 @Injectable()
 export class MockGeminiChatGateway implements GeminiChatGateway {
+  isConfigured = jest.fn().mockReturnValue(true);
+
   generateContent = jest.fn().mockResolvedValue({
     text: 'Hello! How can I help you?',
     finishReason: 'STOP',

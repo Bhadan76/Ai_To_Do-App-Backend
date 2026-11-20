@@ -5,7 +5,19 @@
  */
 export const GEMINI_CHAT_GATEWAY = 'GEMINI_CHAT_GATEWAY';
 
+/**
+ * Generic, client-safe message used whenever Gemini is not configured.
+ * It intentionally avoids exposing any environment or credential details.
+ */
+export const GEMINI_UNAVAILABLE_MESSAGE =
+  'AI service is temporarily unavailable.';
+
 export type GeminiChatGateway = {
+  /**
+   * Reports whether the gateway is backed by a usable Gemini client.
+   * When it returns false the AI endpoints answer with 503.
+   */
+  isConfigured(): boolean;
   generateContent(
     contents: string[],
     systemInstruction?: string,

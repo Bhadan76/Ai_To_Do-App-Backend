@@ -10,6 +10,7 @@ import { configureApp } from '../src/configure-app';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { AuthService } from '../src/auth/auth.service';
 import { AiService } from '../src/ai/ai.service';
+import { GeminiService } from '../src/ai/gemini.service';
 
 describe('AI API (e2e - mocked)', () => {
   let app: INestApplication<App>;
@@ -71,6 +72,31 @@ describe('AI API (e2e - mocked)', () => {
     // Set test environment variables before ConfigModule loads
     process.env.NODE_ENV = 'test';
     process.env.JWT_SECRET = 'test-only-secret-not-for-any-environment-outside-tests-xyz';
+    jest.clearAllMocks();
+    prisma.user.findUnique.mockImplementation(
+      async ({ where }: { where: { id: string } }) => ({ id: where.id }),
+    );
+
+    aiService.createConversation.mockImplementation(async (userId, title) => ({
+      id: 'conv-1',
+      userId,
+      title: title || 'Conversation',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
+    aiService.sendMessage.mockImplementation(async (convId, userId, content) => ({
+      conversation: { id: convId, userId, title: 'C', createdAt: new Date(), updatedAt: new Date() },
+      userMessage: { id: 'm1', conversationId: convId, role: 'user', content, createdAt: new Date() },
+      assistantMessage: { id: 'm2', conversationId: convId, role: 'assistant', content: 'Hi', createdAt: new Date() },
+    }));
+    aiService.listConversations.mockResolvedValue({
+      items: mockConversations,
+      page: 1, pageSize: 20, totalItems: 1, totalPages: 1
+    });
+    aiService.getConversation.mockImplementation(async (userId, id) => ({
+      id, userId, title: 'C', createdAt: new Date(), updatedAt: new Date()
+    }));
+    aiService.deleteConversation.mockResolvedValue(undefined);
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -208,7 +234,7 @@ describe('AI API (e2e - mocked)', () => {
   it('returns a conversation by ID for the authenticated user', async () => {
     const token = await accessTokenFor('user-a');
     await request(app.getHttpServer())
-      .get(`/api/v1/ai/conversations/${conversionId}`)
+      .get(`/api/v1/ai/conversations/${conversationId}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200)
       .expect((response) => {

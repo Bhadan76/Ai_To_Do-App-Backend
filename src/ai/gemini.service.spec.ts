@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { GeminiService } from './gemini.service';
-import { Logger } from '@nestjs/common';
+import { GEMINI_UNAVAILABLE_MESSAGE } from './gemini-gateway.token';
 
 const mockGoogleGenAI = {
   models: {
@@ -38,12 +39,21 @@ describe('GeminiService', () => {
   let service: GeminiService;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        Logger,
         {
           provide: 'GoogleGenAI_TOKEN',
           useValue: mockClient,
+        },
+        {
+          provide: 'GEMINI_MODEL',
+          useValue: 'gemini-test-model',
+        },
+        {
+          provide: 'GEMINI_TIMEOUT_MS',
+          useValue: 30000,
         },
         GeminiService,
       ],
@@ -75,10 +85,21 @@ describe('GeminiService', () => {
     );
   });
 
+  it('uses the configured model instead of a hardcoded one', async () => {
+    await service.generateContent(['user: Hello']);
+
+    expect(mockGoogleGenAI.models.generateContent).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gemini-test-model' }),
+    );
+  });
+
   it('counts tokens', async () => {
     const result = await service.countTokens(['user: Hello']);
 
     expect(result).toBe(50);
+    expect(mockGoogleGenAI.models.countTokens).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gemini-test-model' }),
+    );
   });
 
   it('maps rate limit errors', async () => {
@@ -123,5 +144,55 @@ describe('GeminiService', () => {
 
     expect(mapped).toBeInstanceOf(Error);
     expect(mapped.message).toBe('Some other error');
+  });
+});
+
+describe('GeminiService without Gemini configuration', () => {
+  async function createService(
+    providers: Array<Record<string, unknown>>,
+  ): Promise<GeminiService> {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [...providers, GeminiService],
+    }).compile();
+
+    return module.get(GeminiService);
+  }
+
+  it('is not configured when no client is provided', async () => {
+    const service = await createService([]);
+
+    expect(service.isConfigured()).toBe(false);
+  });
+
+  it('is not configured when the model is missing', async () => {
+    const service = await createService([
+      {
+        provide: 'GoogleGenAI_TOKEN',
+        useValue: mockClient,
+      },
+    ]);
+
+    expect(service.isConfigured()).toBe(false);
+  });
+
+  it('does not call Gemini and answers with 503 when it is not configured', async () => {
+    const service = await createService([]);
+
+    await expect(service.generateContent(['user: Hello'])).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+    await expect(service.generateContent(['user: Hello'])).rejects.toThrow(
+      GEMINI_UNAVAILABLE_MESSAGE,
+    );
+    expect(mockGoogleGenAI.models.generateContent).not.toHaveBeenCalled();
+  });
+
+  it('answers with 503 when counting tokens without a configuration', async () => {
+    const service = await createService([]);
+
+    await expect(service.countTokens(['user: Hello'])).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+    expect(mockGoogleGenAI.models.countTokens).not.toHaveBeenCalled();
   });
 });

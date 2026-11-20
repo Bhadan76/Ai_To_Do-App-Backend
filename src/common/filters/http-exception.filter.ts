@@ -28,21 +28,46 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     const validationErrors = this.getValidationErrors(exception);
-    const statusName = HttpStatus[status] ?? 'REQUEST_FAILED';
-    const message =
-      status >= HttpStatus.INTERNAL_SERVER_ERROR
-        ? 'Internal server error'
-        : statusName
-            .toLowerCase()
-            .split('_')
-            .map((word) => word[0].toUpperCase() + word.slice(1))
-            .join(' ');
+    const message = this.resolveMessage(exception, status);
 
     response.status(status).json({
       success: false,
       message,
       errors: validationErrors,
     });
+  }
+
+  /**
+   * Builds the client-facing message. Server errors keep the generic
+   * "Internal server error" text, except for 503 responses that carry their
+   * own safe, generic message (for example a temporarily disabled feature).
+   */
+  private resolveMessage(exception: unknown, status: number): string {
+    if (
+      status === HttpStatus.SERVICE_UNAVAILABLE &&
+      exception instanceof HttpException
+    ) {
+      const body = exception.getResponse();
+      if (
+        typeof body === 'object' &&
+        body !== null &&
+        'message' in body &&
+        typeof body.message === 'string'
+      ) {
+        return body.message;
+      }
+    }
+
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      return 'Internal server error';
+    }
+
+    const statusName = HttpStatus[status] ?? 'REQUEST_FAILED';
+    return statusName
+      .toLowerCase()
+      .split('_')
+      .map((word) => word[0].toUpperCase() + word.slice(1))
+      .join(' ');
   }
 
   private getValidationErrors(exception: unknown): string[] {
