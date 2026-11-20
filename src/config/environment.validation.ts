@@ -97,6 +97,14 @@ export function validateEnvironment(config: Environment): Environment {
   if (port > 65535) {
     throw new Error('Invalid PORT configuration.');
   }
+  console.log('Gemini Environment Check:', {
+  configHasKey: Boolean(
+    String(config.GEMINI_API_KEY ?? '').trim(),
+  ),
+  processHasKey: Boolean(
+    process.env.GEMINI_API_KEY?.trim(),
+  ),
+});
 
   const geminiApiKey =
     config.GEMINI_API_KEY === undefined
